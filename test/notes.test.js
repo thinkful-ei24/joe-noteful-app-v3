@@ -3,20 +3,22 @@
 const chai = require('chai');
 const chaiHttp = require('chai-http');
 const mongoose = require('mongoose');
+const express = require('express');
+const sinon = require('sinon');
 
 const app = require('../server');
-const { TEST_MONGODB_URI } = require('../config');
-
+const Tag = require('../models/tag');
 const Note = require('../models/note');
 const Folder = require('../models/folder');
-const Tag = require('../models/tag');
+const { TEST_MONGODB_URI } = require('../config');
 
 const seedNotes = require('../db/seed/notes');
 const seedFolders = require('../db/seed/folders');
 const seedTags = require('../db/seed/tags');
 
-const expect = chai.expect;
 chai.use(chaiHttp);
+const expect = chai.expect;
+const sandbox = sinon.createSandbox();
 
 describe('Noteful API - Notes', function () {
 
@@ -38,6 +40,7 @@ describe('Noteful API - Notes', function () {
   });
 
   afterEach(function () {
+    sandbox.restore();
     return mongoose.connection.db.dropDatabase();
   });
 
@@ -88,7 +91,7 @@ describe('Noteful API - Notes', function () {
       // const re = new RegExp(searchTerm, 'i');
       const dbPromise = Note.find({
         title: { $regex: searchTerm, $options: 'i' }
-        // $or: [{ 'title': re }, { 'content': re }]
+        // $or: [{ title: re }, { content: re }]
       });
       const apiPromise = chai.request(app)
         .get(`/api/notes?searchTerm=${searchTerm}`);
@@ -129,12 +132,30 @@ describe('Noteful API - Notes', function () {
         });
     });
 
+    it('should return correct search results for a tagId query', function () {
+      let data;
+      return Tag.findOne()
+        .then((_data) => {
+          data = _data;
+          return Promise.all([
+            Note.find({ tags: data.id }),
+            chai.request(app).get(`/api/notes?tagId=${data.id}`)
+          ]);
+        })
+        .then(([data, res]) => {
+          expect(res).to.have.status(200);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('array');
+          expect(res.body).to.have.length(data.length);
+        });
+    });
+
     it('should return an empty array for an incorrect query', function () {
       const searchTerm = 'NotValid';
       // const re = new RegExp(searchTerm, 'i');
       const dbPromise = Note.find({
         title: { $regex: searchTerm, $options: 'i' }
-        // $or: [{ 'title': re }, { 'content': re }]
+        // $or: [{ title: re }, { content: re }]
       });
       const apiPromise = chai.request(app).get(`/api/notes?searchTerm=${searchTerm}`);
       return Promise.all([dbPromise, apiPromise])
@@ -143,6 +164,18 @@ describe('Noteful API - Notes', function () {
           expect(res).to.be.json;
           expect(res.body).to.be.a('array');
           expect(res.body).to.have.length(data.length);
+        });
+    });
+
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(Note.schema.options.toObject, 'transform').throws('TypeError');
+
+      return chai.request(app).get('/api/notes')
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
         });
     });
   });
@@ -174,7 +207,7 @@ describe('Noteful API - Notes', function () {
         .get('/api/notes/NOT-A-VALID-ID')
         .then(res => {
           expect(res).to.have.status(400);
-          expect(res.body.message).to.eq('The `id` is not valid');
+          expect(res.body.message).to.equal('The `id` is not valid');
         });
     });
 
@@ -187,14 +220,29 @@ describe('Noteful API - Notes', function () {
         });
     });
 
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(Note.schema.options.toObject, 'transform').throws('TypeError');
+
+      return Note.findOne()
+        .then(data => {
+          return chai.request(app).get(`/api/notes/${data.id}`);
+        })
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
+        });
+    });
+
   });
 
   describe('POST /api/notes', function () {
 
     it('should create and return a new item when provided valid data', function () {
       const newItem = {
-        'title': 'The best article about cats ever!',
-        'content': 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor...'
+        title: 'The best article about cats ever!',
+        content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor...'
       };
       let res;
       return chai.request(app)
@@ -220,7 +268,7 @@ describe('Noteful API - Notes', function () {
 
     it('should return an error when missing "title" field', function () {
       const newItem = {
-        'content': 'Lorem ipsum dolor sit amet, sed do eiusmod tempor...'
+        content: 'Lorem ipsum dolor sit amet, sed do eiusmod tempor...'
       };
       return chai.request(app)
         .post('/api/notes')
@@ -233,14 +281,68 @@ describe('Noteful API - Notes', function () {
         });
     });
 
+    it('should return an error when `folderId` is not valid ', function () {
+      const newItem = {
+        title: 'What about dogs?!',
+        content: 'Lorem ipsum dolor sit amet, sed do eiusmod tempor...',
+        folderId: 'NOT-A-VALID-ID'
+      };
+      return chai.request(app)
+        .post('/api/notes')
+        .send(newItem)
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('The `folderId` is not valid');
+        });
+    });
+
+    it('should return an error when a tags `id` is not valid ', function () {
+      const newItem = {
+        title: 'What about dogs?!',
+        content: 'Lorem ipsum dolor sit amet, sed do eiusmod tempor...',
+        tags: ['NOT-A-VALID-ID']
+      };
+      return chai.request(app)
+        .post('/api/notes')
+        .send(newItem)
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('The tags `id` is not valid');
+        });
+    });
+
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(Note.schema.options.toObject, 'transform').throws('TypeError');
+
+      const newItem = {
+        title: 'The best article about cats ever!',
+        content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor...'
+      };
+
+      return chai.request(app)
+        .post('/api/notes')
+        .send(newItem)
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
+        });
+    });
+
+
   });
 
   describe('PUT /api/notes/:id', function () {
 
     it('should update the note when provided valid data', function () {
       const updateItem = {
-        'title': 'What about dogs?!',
-        'content': 'woof woof'
+        title: 'What about dogs?!',
+        content: 'Lorem ipsum dolor sit amet, sed do eiusmod tempor...'
       };
       let data;
       return Note.findOne()
@@ -264,26 +366,25 @@ describe('Noteful API - Notes', function () {
         });
     });
 
-
     it('should respond with status 400 and an error message when `id` is not valid', function () {
       const updateItem = {
-        'title': 'What about dogs?!',
-        'content': 'woof woof'
+        title: 'What about dogs?!',
+        content: 'Lorem ipsum dolor sit amet, sed do eiusmod tempor...'
       };
       return chai.request(app)
         .put('/api/notes/NOT-A-VALID-ID')
         .send(updateItem)
         .then(res => {
           expect(res).to.have.status(400);
-          expect(res.body.message).to.eq('The `id` is not valid');
+          expect(res.body.message).to.equal('The `id` is not valid');
         });
     });
 
     it('should respond with a 404 for an id that does not exist', function () {
       // The string "DOESNOTEXIST" is 12 bytes which is a valid Mongo ObjectId
       const updateItem = {
-        'title': 'What about dogs?!',
-        'content': 'woof woof'
+        title: 'What about dogs?!',
+        content: 'Lorem ipsum dolor sit amet, sed do eiusmod tempor...'
       };
       return chai.request(app)
         .put('/api/notes/DOESNOTEXIST')
@@ -293,15 +394,12 @@ describe('Noteful API - Notes', function () {
         });
     });
 
-    it('should return an error when missing "title" field', function () {
+    it('should return an error when "title" is an empty string', function () {
       const updateItem = {
-        'content': 'woof woof'
+        title: ''
       };
-      let data;
       return Note.findOne()
-        .then(_data => {
-          data = _data;
-
+        .then(data => {
           return chai.request(app)
             .put(`/api/notes/${data.id}`)
             .send(updateItem);
@@ -311,6 +409,63 @@ describe('Noteful API - Notes', function () {
           expect(res).to.be.json;
           expect(res.body).to.be.a('object');
           expect(res.body.message).to.equal('Missing `title` in request body');
+        });
+    });
+
+    it('should return an error when `folderId` is not valid ', function () {
+      const updateItem = {
+        folderId: 'NOT-A-VALID-ID'
+      };
+      return Note.findOne()
+        .then(data => {
+          return chai.request(app)
+            .put(`/api/notes/${data.id}`)
+            .send(updateItem);
+        })
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('The `folderId` is not valid');
+        });
+    });
+
+    it('should return an error when a tags `id` is not valid ', function () {
+      const updateItem = {
+        tags: ['NOT-A-VALID-ID']
+      };
+      return Note.findOne()
+        .then(data => {
+          return chai.request(app)
+            .put(`/api/notes/${data.id}`)
+            .send(updateItem);
+        })
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('The tags `id` is not valid');
+        });
+    });
+
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(Note.schema.options.toObject, 'transform').throws('TypeError');
+
+      const updateItem = {
+        title: 'What about dogs?!',
+        content: 'Lorem ipsum dolor sit amet, sed do eiusmod tempor...'
+      };
+      return Note.findOne()
+        .then(data => {
+          return chai.request(app)
+            .put(`/api/notes/${data.id}`)
+            .send(updateItem);
+        })
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
         });
     });
 
@@ -331,6 +486,29 @@ describe('Noteful API - Notes', function () {
         })
         .then(count => {
           expect(count).to.equal(0);
+        });
+    });
+
+    it('should respond with a 400 for an invalid id', function () {
+      return chai.request(app)
+        .delete('/api/notes/NOT-A-VALID-ID')
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res.body.message).to.equal('The `id` is not valid');
+        });
+    });
+
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(express.response, 'sendStatus').throws('TypeError');
+      return Note.findOne()
+        .then(data => {
+          return chai.request(app).delete(`/api/notes/${data.id}`);
+        })
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
         });
     });
 

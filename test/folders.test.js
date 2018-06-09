@@ -3,17 +3,20 @@
 const chai = require('chai');
 const chaiHttp = require('chai-http');
 const mongoose = require('mongoose');
+const express = require('express');
+const sinon = require('sinon');
 
 const app = require('../server');
+const Folder = require('../models/folder');
+const seedFolders = require('../db/seed/folders');
 const { TEST_MONGODB_URI } = require('../config');
 
-const Tag = require('../models/tag');
-const seedTags = require('../db/seed/tags');
-
-const expect = chai.expect;
 chai.use(chaiHttp);
+const expect = chai.expect;
+const sandbox = sinon.createSandbox();
 
-describe('Noteful API - Tags', function () {
+
+describe('Noteful API - Folders', function () {
 
   before(function () {
     return mongoose.connect(TEST_MONGODB_URI)
@@ -22,12 +25,13 @@ describe('Noteful API - Tags', function () {
 
   beforeEach(function () {
     return Promise.all([
-      Tag.insertMany(seedTags),
-      Tag.createIndexes()
+      Folder.insertMany(seedFolders),
+      Folder.createIndexes()
     ]);
   });
 
   afterEach(function () {
+    sandbox.restore();
     return mongoose.connection.db.dropDatabase();
   });
 
@@ -35,12 +39,12 @@ describe('Noteful API - Tags', function () {
     return mongoose.disconnect();
   });
 
-  describe('GET /api/tags', function () {
+  describe('GET /api/folders', function () {
 
-    it('should return the correct number of tags', function () {
+    it('should return a list sorted by name with the correct number of folders', function () {
       return Promise.all([
-        Tag.find(),
-        chai.request(app).get('/api/tags')
+        Folder.find().sort('name'),
+        chai.request(app).get('/api/folders')
       ])
         .then(([data, res]) => {
           expect(res).to.have.status(200);
@@ -52,8 +56,8 @@ describe('Noteful API - Tags', function () {
 
     it('should return a list with the correct fields and values', function () {
       return Promise.all([
-        Tag.find().sort('name'),
-        chai.request(app).get('/api/tags')
+        Folder.find().sort('name'),
+        chai.request(app).get('/api/folders')
       ])
         .then(([data, res]) => {
           expect(res).to.have.status(200);
@@ -65,23 +69,34 @@ describe('Noteful API - Tags', function () {
             expect(item).to.have.all.keys('id', 'name', 'createdAt', 'updatedAt');
             expect(item.id).to.equal(data[i].id);
             expect(item.name).to.equal(data[i].name);
-
             expect(new Date(item.createdAt)).to.eql(data[i].createdAt);
             expect(new Date(item.updatedAt)).to.eql(data[i].updatedAt);
           });
         });
     });
 
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('TypeError');
+
+      return chai.request(app).get('/api/folders')
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
+        });
+    });
+
   });
 
-  describe('GET /api/tags/:id', function () {
+  describe('GET /api/folders/:id', function () {
 
-    it('should return correct tags', function () {
+    it('should return correct folder', function () {
       let data;
-      return Tag.findOne()
+      return Folder.findOne()
         .then(_data => {
           data = _data;
-          return chai.request(app).get(`/api/tags/${data.id}`);
+          return chai.request(app).get(`/api/folders/${data.id}`);
         })
         .then((res) => {
           expect(res).to.have.status(200);
@@ -97,31 +112,48 @@ describe('Noteful API - Tags', function () {
 
     it('should respond with a 400 for an invalid id', function () {
       return chai.request(app)
-        .get('/api/tags/NOT-A-VALID-ID')
+        .get('/api/folders/NOT-A-VALID-ID')
         .then(res => {
           expect(res).to.have.status(400);
-          expect(res.body.message).to.eq('The `id` is not valid');
+          expect(res.body.message).to.equal('The `id` is not valid');
         });
     });
 
-    it('should respond with a 404 for an id that does not exist', function () {
+    it('should respond with a 404 for an ID that does not exist', function () {
       // The string "DOESNOTEXIST" is 12 bytes which is a valid Mongo ObjectId
       return chai.request(app)
-        .get('/api/tags/DOESNOTEXIST')
+        .get('/api/folders/DOESNOTEXIST')
         .then(res => {
           expect(res).to.have.status(404);
         });
     });
 
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('TypeError');
+
+      let data;
+      return Folder.findOne()
+        .then(_data => {
+          data = _data;
+          return chai.request(app).get(`/api/folders/${data.id}`);
+        })
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
+        });
+    });
+
   });
 
-  describe('POST /api/tags', function () {
+  describe('POST /api/folders', function () {
 
     it('should create and return a new item when provided valid data', function () {
-      const newItem = { 'name': 'newTag' };
+      const newItem = { name: 'newFolder' };
       let body;
       return chai.request(app)
-        .post('/api/tags')
+        .post('/api/folders')
         .send(newItem)
         .then(function (res) {
           body = res.body;
@@ -130,7 +162,7 @@ describe('Noteful API - Tags', function () {
           expect(res).to.be.json;
           expect(body).to.be.a('object');
           expect(body).to.have.all.keys('id', 'name', 'createdAt', 'updatedAt');
-          return Tag.findById(body.id);
+          return Folder.findById(body.id);
         })
         .then(data => {
           expect(body.id).to.equal(data.id);
@@ -142,9 +174,8 @@ describe('Noteful API - Tags', function () {
 
     it('should return an error when missing "name" field', function () {
       const newItem = { 'foo': 'bar' };
-
       return chai.request(app)
-        .post('/api/tags')
+        .post('/api/folders')
         .send(newItem)
         .then(res => {
           expect(res).to.have.status(400);
@@ -155,33 +186,45 @@ describe('Noteful API - Tags', function () {
     });
 
     it('should return an error when given a duplicate name', function () {
-      return Tag.findOne()
+      return Folder.findOne()
         .then(data => {
-          const newItem = { 'name': data.name };
-          return chai.request(app)
-            .post('/api/tags')
-            .send(newItem);
+          const newItem = { name: data.name };
+          return chai.request(app).post('/api/folders').send(newItem);
         })
         .then(res => {
           expect(res).to.have.status(400);
           expect(res).to.be.json;
           expect(res.body).to.be.a('object');
-          expect(res.body.message).to.equal('Tag name already exists');
+          expect(res.body.message).to.equal('Folder name already exists');
         });
     });
+
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('TypeError');
+
+      const newItem = { name: 'newFolder' };
+      return chai.request(app)
+        .post('/api/folders')
+        .send(newItem)
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
+        });
+    });
+
   });
 
-  describe('PUT /api/tags/:id', function () {
+  describe('PUT /api/folders/:id', function () {
 
-    it('should update the tag', function () {
-      const updateItem = { 'name': 'Updated Name' };
+    it('should update the folder', function () {
+      const updateItem = { name: 'Updated Name' };
       let data;
-      return Tag.findOne()
+      return Folder.findOne()
         .then(_data => {
           data = _data;
-          return chai.request(app)
-            .put(`/api/tags/${data.id}`)
-            .send(updateItem);
+          return chai.request(app).put(`/api/folders/${data.id}`).send(updateItem);
         })
         .then(function (res) {
           expect(res).to.have.status(200);
@@ -196,23 +239,23 @@ describe('Noteful API - Tags', function () {
         });
     });
 
-    it('should respond with a 400 for an invalid id', function () {
-      const updateItem = { 'name': 'Blah' };
 
+    it('should respond with a 400 for an invalid id', function () {
+      const updateItem = { name: 'Blah' };
       return chai.request(app)
-        .put('/api/tags/NOT-A-VALID-ID')
+        .put('/api/folders/NOT-A-VALID-ID')
         .send(updateItem)
         .then(res => {
           expect(res).to.have.status(400);
-          expect(res.body.message).to.eq('The `id` is not valid');
+          expect(res.body.message).to.equal('The `id` is not valid');
         });
     });
 
     it('should respond with a 404 for an id that does not exist', function () {
-      const updateItem = { 'name': 'Blah' };
+      const updateItem = { name: 'Blah' };
       // The string "DOESNOTEXIST" is 12 bytes which is a valid Mongo ObjectId
       return chai.request(app)
-        .put('/api/tags/DOESNOTEXIST')
+        .put('/api/folders/DOESNOTEXIST')
         .send(updateItem)
         .then(res => {
           expect(res).to.have.status(404);
@@ -222,12 +265,10 @@ describe('Noteful API - Tags', function () {
     it('should return an error when missing "name" field', function () {
       const updateItem = {};
       let data;
-      return Tag.findOne()
+      return Folder.findOne()
         .then(_data => {
           data = _data;
-          return chai.request(app)
-            .put(`/api/tags/${data.id}`)
-            .send(updateItem);
+          return chai.request(app).put(`/api/folders/${data.id}`).send(updateItem);
         })
         .then(res => {
           expect(res).to.have.status(400);
@@ -238,41 +279,81 @@ describe('Noteful API - Tags', function () {
     });
 
     it('should return an error when given a duplicate name', function () {
-      return Tag.find().limit(2)
+      return Folder.find().limit(2)
         .then(results => {
           const [item1, item2] = results;
           item1.name = item2.name;
           return chai.request(app)
-            .put(`/api/tags/${item1.id}`)
+            .put(`/api/folders/${item1.id}`)
             .send(item1);
         })
         .then(res => {
           expect(res).to.have.status(400);
           expect(res).to.be.json;
           expect(res.body).to.be.a('object');
-          expect(res.body.message).to.equal('Tag name already exists');
+          expect(res.body.message).to.equal('Folder name already exists');
+        });
+    });
+
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('TypeError');
+
+      const updateItem = { name: 'Updated Name' };
+      let data;
+      return Folder.findOne()
+        .then(_data => {
+          data = _data;
+          return chai.request(app).put(`/api/folders/${data.id}`).send(updateItem);
+        })
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
         });
     });
 
   });
 
-  describe('DELETE /api/tags/:id', function () {
+  describe('DELETE /api/folders/:id', function () {
 
     it('should delete an existing document and respond with 204', function () {
       let data;
-      return Tag.findOne()
+      return Folder.findOne()
         .then(_data => {
           data = _data;
-          return chai.request(app)
-            .delete(`/api/tags/${data.id}`);
+          return chai.request(app).delete(`/api/folders/${data.id}`);
         })
         .then(function (res) {
           expect(res).to.have.status(204);
           expect(res.body).to.be.empty;
-          return Tag.count({ _id: data.id });
+          return Folder.count({ _id: data.id });
         })
         .then(count => {
           expect(count).to.equal(0);
+        });
+    });
+
+    it('should respond with a 400 for an invalid id', function () {
+      return chai.request(app)
+        .delete('/api/folders/NOT-A-VALID-ID')
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res.body.message).to.equal('The `id` is not valid');
+        });
+    });
+
+    it('should catch errors and respond properly', function () {
+      sandbox.stub(express.response, 'sendStatus').throws('TypeError');
+      return Folder.findOne()
+        .then(data => {
+          return chai.request(app).delete(`/api/folders/${data.id}`);
+        })
+        .then(res => {
+          expect(res).to.have.status(500);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Internal Server Error');
         });
     });
 

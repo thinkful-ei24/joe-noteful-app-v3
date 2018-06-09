@@ -119,7 +119,7 @@ router.delete('/:id', (req, res, next) => {
   }
 
   // ON DELETE SET NULL equivalent
-  const folderRemovePromise = Folder.findByIdAndRemove( id );
+  const folderRemovePromise = Folder.findByIdAndRemove(id);
   // ON DELETE CASCADE equivalent
   // const noteRemovePromise = Note.deleteMany({ folderId: id });
 
@@ -130,7 +130,7 @@ router.delete('/:id', (req, res, next) => {
 
   Promise.all([folderRemovePromise, noteRemovePromise])
     .then(() => {
-      res.status(204).end();
+      res.sendStatus(204);
     })
     .catch(err => {
       next(err);

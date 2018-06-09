@@ -128,7 +128,7 @@ router.delete('/:id', (req, res, next) => {
 
   Promise.all([tagRemovePromise, noteUpdatePromise])
     .then(() => {
-      res.status(204).end();
+      res.sendStatus(204).end();
     })
     .catch(err => {
       next(err);
