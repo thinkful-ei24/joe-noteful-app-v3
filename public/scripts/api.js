@@ -14,7 +14,7 @@ const api = (function () {
     return $.ajax({
       type: 'GET',
       dataType: 'json',
-      url: path,
+      url: path
     });
   };
   const update = function (path, obj) {
@@ -40,7 +40,7 @@ const api = (function () {
     return $.ajax({
       type: 'DELETE',
       dataType: 'json',
-      url: path,
+      url: path
     });
   };
   return {

@@ -8,7 +8,9 @@ const sinon = require('sinon');
 
 const app = require('../server');
 const Folder = require('../models/folder');
+const Note = require('../models/note');
 const seedFolders = require('../db/seed/folders');
+const seedNotes = require('../db/seed/notes');
 const { TEST_MONGODB_URI } = require('../config');
 
 chai.use(chaiHttp);
@@ -25,7 +27,8 @@ describe('Noteful API - Folders', function () {
   beforeEach(function () {
     return Promise.all([
       Folder.insertMany(seedFolders),
-      Folder.createIndexes()
+      Folder.createIndexes(),
+      Note.insertMany(seedNotes),
     ]);
   });
 
@@ -40,7 +43,7 @@ describe('Noteful API - Folders', function () {
 
   describe('GET /api/folders', function () {
 
-    it('should return a list sorted by name with the correct number of folders', function () {
+    it('should return a list sorted with the correct number of folders', function () {
       return Promise.all([
         Folder.find().sort('name'),
         chai.request(app).get('/api/folders')
@@ -53,7 +56,7 @@ describe('Noteful API - Folders', function () {
         });
     });
 
-    it('should return a list with the correct fields and values', function () {
+    it('should return a list sorted by name with the correct fields and values', function () {
       return Promise.all([
         Folder.find().sort('name'),
         chai.request(app).get('/api/folders')
@@ -75,8 +78,7 @@ describe('Noteful API - Folders', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('TypeError');
-
+      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('FakeError');
       return chai.request(app).get('/api/folders')
         .then(res => {
           expect(res).to.have.status(500);
@@ -118,7 +120,7 @@ describe('Noteful API - Folders', function () {
         });
     });
 
-    it('should respond with a 404 for an ID that does not exist', function () {
+    it('should respond with a 404 for an id that does not exist', function () {
       // The string "DOESNOTEXIST" is 12 bytes which is a valid Mongo ObjectId
       return chai.request(app)
         .get('/api/folders/DOESNOTEXIST')
@@ -128,7 +130,7 @@ describe('Noteful API - Folders', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('TypeError');
+      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('FakeError');
 
       let data;
       return Folder.findOne()
@@ -172,7 +174,20 @@ describe('Noteful API - Folders', function () {
     });
 
     it('should return an error when missing "name" field', function () {
-      const newItem = { 'foo': 'bar' };
+      const newItem = {};
+      return chai.request(app)
+        .post('/api/folders')
+        .send(newItem)
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Missing `name` in request body');
+        });
+    });
+
+    it('should return an error when "name" field is empty string', function () {
+      const newItem = { name: '' };
       return chai.request(app)
         .post('/api/folders')
         .send(newItem)
@@ -199,7 +214,7 @@ describe('Noteful API - Folders', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('TypeError');
+      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('FakeError');
 
       const newItem = { name: 'newFolder' };
       return chai.request(app)
@@ -237,7 +252,6 @@ describe('Noteful API - Folders', function () {
           expect(new Date(res.body.updatedAt)).to.greaterThan(data.updatedAt);
         });
     });
-
 
     it('should respond with a 400 for an invalid id', function () {
       const updateItem = { name: 'Blah' };
@@ -277,6 +291,24 @@ describe('Noteful API - Folders', function () {
         });
     });
 
+    it('should return an error when "name" field is empty string', function () {
+      const updateItem = { name: '' };
+      let data;
+      return Folder.findOne()
+        .then(_data => {
+          data = _data;
+          return chai.request(app)
+            .put(`/api/folders/${data.id}`)
+            .send(updateItem);
+        })
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Missing `name` in request body');
+        });
+    });
+
     it('should return an error when given a duplicate name', function () {
       return Folder.find().limit(2)
         .then(results => {
@@ -295,7 +327,7 @@ describe('Noteful API - Folders', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('TypeError');
+      sandbox.stub(Folder.schema.options.toObject, 'transform').throws('FakeError');
 
       const updateItem = { name: 'Updated Name' };
       let data;
@@ -316,7 +348,7 @@ describe('Noteful API - Folders', function () {
 
   describe('DELETE /api/folders/:id', function () {
 
-    it('should delete an existing document and respond with 204', function () {
+    it('should delete an existing folder and respond with 204', function () {
       let data;
       return Folder.findOne()
         .then(_data => {
@@ -333,6 +365,24 @@ describe('Noteful API - Folders', function () {
         });
     });
 
+    it('should delete an existing folder and remove folderId reference from note', function () {
+      let folderId;
+      return Note.findOne({ folderId: { $exists: true } })
+        .then(data => {
+          folderId = data.folderId;
+          return chai.request(app)
+            .delete(`/api/folders/${folderId}`);
+        })
+        .then(function (res) {
+          expect(res).to.have.status(204);
+          expect(res.body).to.be.empty;
+          return Note.count({ folderId });
+        })
+        .then(count => {
+          expect(count).to.equal(0);
+        });
+    });
+
     it('should respond with a 400 for an invalid id', function () {
       return chai.request(app)
         .delete('/api/folders/NOT-A-VALID-ID')
@@ -343,7 +393,7 @@ describe('Noteful API - Folders', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(express.response, 'sendStatus').throws('TypeError');
+      sandbox.stub(express.response, 'sendStatus').throws('FakeError');
       return Folder.findOne()
         .then(data => {
           return chai.request(app).delete(`/api/folders/${data.id}`);

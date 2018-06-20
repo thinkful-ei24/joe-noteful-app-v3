@@ -122,13 +122,13 @@ router.delete('/:id', (req, res, next) => {
   const tagRemovePromise = Tag.findByIdAndRemove(id);
 
   const noteUpdatePromise = Note.updateMany(
-    { tags: id, },
+    { tags: id },
     { $pull: { tags: id } }
   );
 
   Promise.all([tagRemovePromise, noteUpdatePromise])
     .then(() => {
-      res.sendStatus(204).end();
+      res.sendStatus(204);
     })
     .catch(err => {
       next(err);

@@ -1,7 +1,5 @@
 'use strict';
 
-require('dotenv').config();
-
 const express = require('express');
 const morgan = require('morgan');
 const mongoose = require('mongoose');
@@ -45,11 +43,12 @@ app.use((err, req, res, next) => {
     res.status(err.status).json(errBody);
   } else {
     res.status(500).json({ message: 'Internal Server Error' });
+    console.log(err.name === 'FakeError' ? '' : err);
   }
 });
 
 // Listen for incoming connections
-if (process.env.NODE_ENV !== 'test') {
+if (require.main === module) {
   // Connect to DB and Listen for incoming connections
   mongoose.connect(MONGODB_URI)
     .then(instance => {

@@ -8,7 +8,9 @@ const sinon = require('sinon');
 
 const app = require('../server');
 const Tag = require('../models/tag');
+const Note = require('../models/note');
 const seedTags = require('../db/seed/tags');
+const seedNotes = require('../db/seed/notes');
 const { TEST_MONGODB_URI } = require('../config');
 
 chai.use(chaiHttp);
@@ -25,7 +27,8 @@ describe('Noteful API - Tags', function () {
   beforeEach(function () {
     return Promise.all([
       Tag.insertMany(seedTags),
-      Tag.createIndexes()
+      Tag.createIndexes(),
+      Note.insertMany(seedNotes)
     ]);
   });
 
@@ -53,7 +56,7 @@ describe('Noteful API - Tags', function () {
         });
     });
 
-    it('should return a list with the correct fields and values', function () {
+    it('should return a list sorted by name with the correct fields and values', function () {
       return Promise.all([
         Tag.find().sort('name'),
         chai.request(app).get('/api/tags')
@@ -68,7 +71,6 @@ describe('Noteful API - Tags', function () {
             expect(item).to.have.all.keys('id', 'name', 'createdAt', 'updatedAt');
             expect(item.id).to.equal(data[i].id);
             expect(item.name).to.equal(data[i].name);
-
             expect(new Date(item.createdAt)).to.eql(data[i].createdAt);
             expect(new Date(item.updatedAt)).to.eql(data[i].updatedAt);
           });
@@ -76,7 +78,7 @@ describe('Noteful API - Tags', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(Tag.schema.options.toObject, 'transform').throws('TypeError');
+      sandbox.stub(Tag.schema.options.toObject, 'transform').throws('FakeError');
 
       return chai.request(app).get('/api/tags')
         .then(res => {
@@ -96,7 +98,8 @@ describe('Noteful API - Tags', function () {
       return Tag.findOne()
         .then(_data => {
           data = _data;
-          return chai.request(app).get(`/api/tags/${data.id}`);
+          return chai.request(app)
+            .get(`/api/tags/${data.id}`);
         })
         .then((res) => {
           expect(res).to.have.status(200);
@@ -129,7 +132,7 @@ describe('Noteful API - Tags', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(Tag.schema.options.toObject, 'transform').throws('TypeError');
+      sandbox.stub(Tag.schema.options.toObject, 'transform').throws('FakeError');
 
       return Tag.findOne()
         .then(data => {
@@ -160,7 +163,7 @@ describe('Noteful API - Tags', function () {
           expect(res).to.be.json;
           expect(body).to.be.a('object');
           expect(body).to.have.all.keys('id', 'name', 'createdAt', 'updatedAt');
-          return Tag.findById(body.id);
+          return Tag.findOne({ _id: body.id });
         })
         .then(data => {
           expect(body.id).to.equal(data.id);
@@ -171,8 +174,20 @@ describe('Noteful API - Tags', function () {
     });
 
     it('should return an error when missing "name" field', function () {
-      const newItem = { 'foo': 'bar' };
+      const newItem = {};
+      return chai.request(app)
+        .post('/api/tags')
+        .send(newItem)
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Missing `name` in request body');
+        });
+    });
 
+    it('should return an error when "name" field is empty string', function () {
+      const newItem = { name: '' };
       return chai.request(app)
         .post('/api/tags')
         .send(newItem)
@@ -201,7 +216,7 @@ describe('Noteful API - Tags', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(Tag.schema.options.toObject, 'transform').throws('TypeError');
+      sandbox.stub(Tag.schema.options.toObject, 'transform').throws('FakeError');
 
       const newItem = { name: 'newTag' };
       return chai.request(app)
@@ -244,7 +259,6 @@ describe('Noteful API - Tags', function () {
 
     it('should respond with a 400 for an invalid id', function () {
       const updateItem = { name: 'Blah' };
-
       return chai.request(app)
         .put('/api/tags/NOT-A-VALID-ID')
         .send(updateItem)
@@ -283,6 +297,24 @@ describe('Noteful API - Tags', function () {
         });
     });
 
+    it('should return an error when "name" field is empty string', function () {
+      const updateItem = { name: '' };
+      let data;
+      return Tag.findOne()
+        .then(_data => {
+          data = _data;
+          return chai.request(app)
+            .put(`/api/tags/${data.id}`)
+            .send(updateItem);
+        })
+        .then(res => {
+          expect(res).to.have.status(400);
+          expect(res).to.be.json;
+          expect(res.body).to.be.a('object');
+          expect(res.body.message).to.equal('Missing `name` in request body');
+        });
+    });
+
     it('should return an error when given a duplicate name', function () {
       return Tag.find().limit(2)
         .then(results => {
@@ -301,7 +333,7 @@ describe('Noteful API - Tags', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(Tag.schema.options.toObject, 'transform').throws('TypeError');
+      sandbox.stub(Tag.schema.options.toObject, 'transform').throws('FakeError');
 
       const updateItem = { name: 'Updated Name' };
       return Tag.findOne()
@@ -322,7 +354,7 @@ describe('Noteful API - Tags', function () {
 
   describe('DELETE /api/tags/:id', function () {
 
-    it('should delete an existing document and respond with 204', function () {
+    it('should delete an existing tag and respond with 204', function () {
       let data;
       return Tag.findOne()
         .then(_data => {
@@ -340,6 +372,25 @@ describe('Noteful API - Tags', function () {
         });
     });
 
+    it('should delete an existing tag and remove tag reference from note', function () {
+      let tagId;
+      return Note.findOne({ tags: { $exists: true, $ne: [] } })
+        .then(data => {
+          tagId = data.tags[0];
+
+          return chai.request(app)
+            .delete(`/api/tags/${tagId}`);
+        })
+        .then(function (res) {
+          expect(res).to.have.status(204);
+          expect(res.body).to.be.empty;
+          return Note.count({ tags: tagId });
+        })
+        .then(count => {
+          expect(count).to.equal(0);
+        });
+    });
+
     it('should respond with a 400 for an invalid id', function () {
       return chai.request(app)
         .delete('/api/tags/NOT-A-VALID-ID')
@@ -350,7 +401,7 @@ describe('Noteful API - Tags', function () {
     });
 
     it('should catch errors and respond properly', function () {
-      sandbox.stub(express.response, 'sendStatus').throws('TypeError');
+      sandbox.stub(express.response, 'sendStatus').throws('FakeError');
       return Tag.findOne()
         .then(data => {
           return chai.request(app).delete(`/api/tags/${data.id}`);
@@ -362,7 +413,6 @@ describe('Noteful API - Tags', function () {
           expect(res.body.message).to.equal('Internal Server Error');
         });
     });
-
 
   });
 
