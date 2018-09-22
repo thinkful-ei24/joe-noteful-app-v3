@@ -14,6 +14,10 @@ router.get('/', (req, res, next) => {
   let filter = {};
 
   if (searchTerm) {
+    // Search the title for a term
+    // filter.title = { $regex: searchTerm, $options: 'i' };
+
+    // Mini-Challenge: Search both `title` and `content`
     const re = new RegExp(searchTerm, 'i');
     filter.$or = [{ 'title': re }, { 'content': re }];
   }
@@ -64,7 +68,7 @@ router.get('/:id', (req, res, next) => {
 
 /* ========== POST/CREATE AN ITEM ========== */
 router.post('/', (req, res, next) => {
-  const { title, content, folderId, tags } = req.body;
+  const { title, content, folderId, tags = [] } = req.body;
 
   /***** Never trust users - validate input *****/
   if (!title) {
@@ -79,14 +83,13 @@ router.post('/', (req, res, next) => {
     return next(err);
   }
 
-  if (tags) {
-    const badIds = tags.filter((tag) => !mongoose.Types.ObjectId.isValid(tag));
-    if (badIds.length) {
+  tags.forEach((tag) => {
+    if (!mongoose.Types.ObjectId.isValid(tag)) {
       const err = new Error('The `tags` array contains an invalid `id`');
       err.status = 400;
       return next(err);
     }
-  }
+  });
 
   const newNote = { title, content, folderId, tags };
   if (newNote.folderId === '') {
@@ -123,7 +126,7 @@ router.put('/:id', (req, res, next) => {
   }
 
   if (toUpdate.title === '') {
-    const err = new Error('Missing `title` in request body');
+    const err = new Error('The `title` may not be an empty string');
     err.status = 400;
     return next(err);
   }

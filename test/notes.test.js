@@ -10,9 +10,7 @@ const app = require('../server');
 const Tag = require('../models/tag');
 const Note = require('../models/note');
 const Folder = require('../models/folder');
-const seedNotes = require('../db/seed/notes');
-const seedFolders = require('../db/seed/folders');
-const seedTags = require('../db/seed/tags');
+const { folders, notes, tags } = require('../db/data');
 const { TEST_MONGODB_URI } = require('../config');
 
 chai.use(chaiHttp);
@@ -22,23 +20,29 @@ const sandbox = sinon.createSandbox();
 describe('Noteful API - Notes', function () {
 
   before(function () {
-    return mongoose.connect(TEST_MONGODB_URI)
-      .then(() => mongoose.connection.db.dropDatabase());
+    return mongoose.connect(TEST_MONGODB_URI, { useNewUrlParser: true })
+      .then(() => Promise.all([
+        Note.deleteMany(),
+        Folder.deleteMany(),
+        Tag.deleteMany(),
+      ]));
   });
 
   beforeEach(function () {
     return Promise.all([
-      Note.insertMany(seedNotes),
-      Folder.insertMany(seedFolders),
-      Folder.createIndexes(),
-      Tag.insertMany(seedTags),
-      Tag.createIndexes()
+      Note.insertMany(notes),
+      Folder.insertMany(folders),
+      Tag.insertMany(tags)
     ]);
   });
 
   afterEach(function () {
     sandbox.restore();
-    return mongoose.connection.db.dropDatabase();
+    return Promise.all([
+      Note.deleteMany(),
+      Folder.deleteMany(),
+      Tag.deleteMany(),
+    ]);
   });
 
   after(function () {
@@ -77,8 +81,8 @@ describe('Noteful API - Notes', function () {
             expect(item.id).to.equal(data[i].id);
             expect(item.title).to.equal(data[i].title);
             expect(item.content).to.equal(data[i].content);
-            expect(new Date(item.createdAt)).to.eql(data[i].createdAt);
-            expect(new Date(item.updatedAt)).to.eql(data[i].updatedAt);
+            expect(new Date(item.createdAt)).to.deep.equal(data[i].createdAt);
+            expect(new Date(item.updatedAt)).to.deep.equal(data[i].updatedAt);
           });
         });
     });
@@ -106,8 +110,8 @@ describe('Noteful API - Notes', function () {
             expect(item.id).to.equal(data[i].id);
             expect(item.title).to.equal(data[i].title);
             expect(item.content).to.equal(data[i].content);
-            expect(new Date(item.createdAt)).to.eql(data[i].createdAt);
-            expect(new Date(item.updatedAt)).to.eql(data[i].updatedAt);
+            expect(new Date(item.createdAt)).to.deep.equal(data[i].createdAt);
+            expect(new Date(item.updatedAt)).to.deep.equal(data[i].updatedAt);
           });
         });
     });
@@ -132,8 +136,8 @@ describe('Noteful API - Notes', function () {
             expect(item.id).to.equal(data[i].id);
             expect(item.title).to.equal(data[i].title);
             expect(item.content).to.equal(data[i].content);
-            expect(new Date(item.createdAt)).to.eql(data[i].createdAt);
-            expect(new Date(item.updatedAt)).to.eql(data[i].updatedAt);
+            expect(new Date(item.createdAt)).to.deep.equal(data[i].createdAt);
+            expect(new Date(item.updatedAt)).to.deep.equal(data[i].updatedAt);
           });
         });
     });
@@ -222,8 +226,8 @@ describe('Noteful API - Notes', function () {
           expect(res.body.id).to.equal(data.id);
           expect(res.body.title).to.equal(data.title);
           expect(res.body.content).to.equal(data.content);
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
-          expect(new Date(res.body.updatedAt)).to.eql(data.updatedAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
+          expect(new Date(res.body.updatedAt)).to.deep.equal(data.updatedAt);
         });
     });
 
@@ -285,8 +289,8 @@ describe('Noteful API - Notes', function () {
           expect(res.body.id).to.equal(data.id);
           expect(res.body.title).to.equal(data.title);
           expect(res.body.content).to.equal(data.content);
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
-          expect(new Date(res.body.updatedAt)).to.eql(data.updatedAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
+          expect(new Date(res.body.updatedAt)).to.deep.equal(data.updatedAt);
         });
     });
 
@@ -311,8 +315,8 @@ describe('Noteful API - Notes', function () {
           expect(res.body.id).to.equal(data.id);
           expect(res.body.title).to.equal(data.title);
           expect(res.body.content).to.not.exist;
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
-          expect(new Date(res.body.updatedAt)).to.eql(data.updatedAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
+          expect(new Date(res.body.updatedAt)).to.deep.equal(data.updatedAt);
         });
     });
 
@@ -338,8 +342,8 @@ describe('Noteful API - Notes', function () {
           expect(res.body.id).to.equal(data.id);
           expect(res.body.title).to.equal(data.title);
           expect(res.body.folderId).to.not.exist;
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
-          expect(new Date(res.body.updatedAt)).to.eql(data.updatedAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
+          expect(new Date(res.body.updatedAt)).to.deep.equal(data.updatedAt);
         });
     });
 
@@ -448,9 +452,9 @@ describe('Noteful API - Notes', function () {
           expect(res.body.id).to.equal(data.id);
           expect(res.body.title).to.equal(updateItem.title);
           expect(res.body.content).to.equal(data.content);
-          expect(res.body.folderId).to.equal(data.folderId);
+          expect(res.body.folderId).to.equal(data.folderId.toString());
           expect(res.body.tags).to.deep.equal(data.tags);
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
           // expect note to have been updated
           expect(new Date(res.body.updatedAt)).to.greaterThan(data.updatedAt);
         });
@@ -476,9 +480,9 @@ describe('Noteful API - Notes', function () {
           expect(res.body.id).to.equal(data.id);
           expect(res.body.title).to.equal(data.title);
           expect(res.body.content).to.equal(updateItem.content);
-          expect(res.body.folderId).to.equal(data.folderId);
+          expect(res.body.folderId).to.equal(data.folderId.toString());
           expect(res.body.tags).to.deep.equal(data.tags);
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
           // expect note to have been updated
           expect(new Date(res.body.updatedAt)).to.greaterThan(data.updatedAt);
         });
@@ -507,7 +511,7 @@ describe('Noteful API - Notes', function () {
           expect(res.body.content).to.equal(data.content);
           expect(res.body.folderId).to.equal(updateItem.folderId);
           expect(res.body.tags).to.deep.equal(data.tags);
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
           // expect note to have been updated
           expect(new Date(res.body.updatedAt)).to.greaterThan(data.updatedAt);
         });
@@ -536,9 +540,9 @@ describe('Noteful API - Notes', function () {
           expect(res.body.id).to.equal(data.id);
           expect(res.body.title).to.equal(data.title);
           expect(res.body.content).to.equal(data.content);
-          expect(res.body.folderId).to.equal(data.folderId);
+          expect(res.body.folderId).to.equal(data.folderId.toString());
           expect(res.body.tags).to.deep.equal(updateItem.tags);
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
           // expect note to have been updated
           expect(new Date(res.body.updatedAt)).to.greaterThan(data.updatedAt);
         });
@@ -586,7 +590,7 @@ describe('Noteful API - Notes', function () {
           expect(res).to.have.status(400);
           expect(res).to.be.json;
           expect(res.body).to.be.a('object');
-          expect(res.body.message).to.equal('Missing `title` in request body');
+          expect(res.body.message).to.equal('The `title` may not be an empty string');
         });
     });
 
@@ -629,7 +633,7 @@ describe('Noteful API - Notes', function () {
           expect(res.body.content).to.equal(data.content);
           expect(res.body.folderId).to.not.exist;
           expect(res.body.tags).to.deep.equal(data.tags);
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
           // expect note to have been updated
           expect(new Date(res.body.updatedAt)).to.greaterThan(data.updatedAt);
         });
@@ -687,7 +691,7 @@ describe('Noteful API - Notes', function () {
         })
         .then(res => {
           expect(res).to.have.status(204);
-          return Note.count({ _id: data.id });
+          return Note.countDocuments({ _id: data.id });
         })
         .then(count => {
           expect(count).to.equal(0);

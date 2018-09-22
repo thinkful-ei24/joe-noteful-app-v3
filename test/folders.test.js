@@ -9,8 +9,8 @@ const sinon = require('sinon');
 const app = require('../server');
 const Folder = require('../models/folder');
 const Note = require('../models/note');
-const seedFolders = require('../db/seed/folders');
-const seedNotes = require('../db/seed/notes');
+
+const { folders, notes } = require('../db/data');
 const { TEST_MONGODB_URI } = require('../config');
 
 chai.use(chaiHttp);
@@ -20,21 +20,27 @@ const sandbox = sinon.createSandbox();
 describe('Noteful API - Folders', function () {
 
   before(function () {
-    return mongoose.connect(TEST_MONGODB_URI)
-      .then(() => mongoose.connection.db.dropDatabase());
+    return mongoose.connect(TEST_MONGODB_URI, { useNewUrlParser: true })
+      .then(() => Promise.all([
+        Note.deleteMany(),
+        Folder.deleteMany()
+      ]));
   });
 
   beforeEach(function () {
     return Promise.all([
-      Folder.insertMany(seedFolders),
-      Folder.createIndexes(),
-      Note.insertMany(seedNotes),
+      Folder.insertMany(folders),
+      Note.insertMany(notes),
+      // Folder.createIndexes(),
     ]);
   });
 
   afterEach(function () {
     sandbox.restore();
-    return mongoose.connection.db.dropDatabase();
+    return Promise.all([
+      Note.deleteMany(), 
+      Folder.deleteMany()
+    ]);
   });
 
   after(function () {
@@ -71,8 +77,8 @@ describe('Noteful API - Folders', function () {
             expect(item).to.have.all.keys('id', 'name', 'createdAt', 'updatedAt');
             expect(item.id).to.equal(data[i].id);
             expect(item.name).to.equal(data[i].name);
-            expect(new Date(item.createdAt)).to.eql(data[i].createdAt);
-            expect(new Date(item.updatedAt)).to.eql(data[i].updatedAt);
+            expect(new Date(item.createdAt)).to.deep.equal(data[i].createdAt);
+            expect(new Date(item.updatedAt)).to.deep.equal(data[i].updatedAt);
           });
         });
     });
@@ -106,8 +112,8 @@ describe('Noteful API - Folders', function () {
           expect(res.body).to.have.all.keys('id', 'name', 'createdAt', 'updatedAt');
           expect(res.body.id).to.equal(data.id);
           expect(res.body.name).to.equal(data.name);
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
-          expect(new Date(res.body.updatedAt)).to.eql(data.updatedAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
+          expect(new Date(res.body.updatedAt)).to.deep.equal(data.updatedAt);
         });
     });
 
@@ -168,8 +174,8 @@ describe('Noteful API - Folders', function () {
         .then(data => {
           expect(body.id).to.equal(data.id);
           expect(body.name).to.equal(data.name);
-          expect(new Date(body.createdAt)).to.eql(data.createdAt);
-          expect(new Date(body.updatedAt)).to.eql(data.updatedAt);
+          expect(new Date(body.createdAt)).to.deep.equal(data.createdAt);
+          expect(new Date(body.updatedAt)).to.deep.equal(data.updatedAt);
         });
     });
 
@@ -247,7 +253,7 @@ describe('Noteful API - Folders', function () {
           expect(res.body).to.have.all.keys('id', 'name', 'createdAt', 'updatedAt');
           expect(res.body.id).to.equal(data.id);
           expect(res.body.name).to.equal(updateItem.name);
-          expect(new Date(res.body.createdAt)).to.eql(data.createdAt);
+          expect(new Date(res.body.createdAt)).to.deep.equal(data.createdAt);
           // expect item to have been updated
           expect(new Date(res.body.updatedAt)).to.greaterThan(data.updatedAt);
         });
@@ -358,7 +364,7 @@ describe('Noteful API - Folders', function () {
         .then(function (res) {
           expect(res).to.have.status(204);
           expect(res.body).to.be.empty;
-          return Folder.count({ _id: data.id });
+          return Folder.countDocuments({ _id: data.id });
         })
         .then(count => {
           expect(count).to.equal(0);
@@ -376,7 +382,7 @@ describe('Noteful API - Folders', function () {
         .then(function (res) {
           expect(res).to.have.status(204);
           expect(res.body).to.be.empty;
-          return Note.count({ folderId });
+          return Note.countDocuments({ folderId });
         })
         .then(count => {
           expect(count).to.equal(0);
