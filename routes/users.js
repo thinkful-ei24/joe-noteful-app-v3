@@ -39,8 +39,8 @@ router.post('/', (req, res, next) => {
     next(err);
   }
 
-  if (username.length <= 1 || password.length <= 8 || password.length >= 72) {
-    const err = new Error('username must be at least 1 character long, password should be at least 8 or 72 max');
+  if (username.length <= 1 || password.length < 8 || password.length > 72) {
+    const err = new Error('username must be at least 2 character long, password should be at least 8 or 72 max');
     err.status = 400;
     next(err);
   }
