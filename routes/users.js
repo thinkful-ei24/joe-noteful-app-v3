@@ -15,15 +15,21 @@ router.post('/', (req, res, next) => {
     next(err);
   }
 
-  const newUser = {fullName, username, password};
-
-  User.create(newUser)
-    .then((result) => {
-      res.location(`${req.originalUrl}/${result.id}`).status(201).json(result);
+  return User.hashPassword(password)
+    .then(digest => {
+      const newUser = {
+        username,
+        password: digest,
+        fullName
+      };
+      return User.create(newUser);
+    })
+    .then(result => {
+      res.status(201).location(`/api/users/${result.id}`).json(result);
     })
     .catch(err => {
       if (err.code === 11000) {
-        err = new Error('Username already exists');
+        err = new Error('The username is taken');
         err.status = 400;
       }
       next(err);
