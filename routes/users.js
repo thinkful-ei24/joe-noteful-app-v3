@@ -8,6 +8,20 @@ const router = express.Router();
 //POST===============================================================
 router.post('/', (req, res, next) => {
   const { fullName, username, password } = req.body;
+  const requiredFields = ['username', 'password'];
+  const missingField = requiredFields.find(field => !(field in req.body));
+  
+  if (missingField) {
+    const err = new Error(`Missing ${missingField} in request body`);
+    err.status = 422;
+    return next(err);
+  }
+
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    const err = new Error('Username or password are not valid characters');
+    err.status = 400;
+    return next(err);
+  }
 
   if(!username || !password) {
     const err = new Error('Invalid username/password');
