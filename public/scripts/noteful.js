@@ -24,6 +24,9 @@ const noteful = (function () {
   }
 
   function render() {
+
+    $('.signup-login').toggle(!store.authorized);
+
     const notesList = generateNotesList(store.notes, store.currentNote);
     $('.js-notes-list').html(notesList);
 
@@ -363,6 +366,26 @@ const noteful = (function () {
     });
   }
 
+  function handleSignupSubmit() {
+    $('.js-signup-from').on('submit', event => {
+      event.preventDefault();
+
+      const signupForm = $(event.currentTarget);
+      const newUser = {
+        fullname: signupForm.find('.js-fullname-entry').val(),
+        username: signupForm.find('.js-username-entry').val(),
+        password: signupForm.find('.js-password-entry').val()
+      };
+
+      api.create('/api/users', newUser)
+        .then(response => {
+          signupForm[0].reset();
+          showSuccessMessage(`Thank you, ${response.fullname || response.username} for signing up!`);
+        })
+        .catch(handleErrors);
+    });
+  }
+
   function handleLoginSubmit() {
     $('.js-login-form').on('submit', event => {
       event.preventDefault();
@@ -375,7 +398,7 @@ const noteful = (function () {
 
       api.create('/api/login', loginUser)
         .then(response => {
-          store.currentUser = response;
+          store.authToken = response.authToken;
           store.authorized = true;
           loginForm[0].reset();
 
@@ -409,6 +432,7 @@ const noteful = (function () {
     handleTagClick();
     handleNewTagSubmit();
     handleTagDeleteClick();
+    handleSignupSubmit();
     handleLoginSubmit();
   }
 
