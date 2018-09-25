@@ -363,6 +363,38 @@ const noteful = (function () {
     });
   }
 
+  function handleLoginSubmit() {
+    $('.js-login-form').on('submit', event => {
+      event.preventDefault();
+
+      const loginForm = $(event.currentTarget);
+      const loginUser = {
+        username: loginForm.find('.js-username-entry').val(),
+        password: loginForm.find('.js-password-entry').val()
+      };
+
+      api.create('/api/login', loginUser)
+        .then(response => {
+          store.currentUser = response;
+          store.authorized = true;
+          loginForm[0].reset();
+
+          return Promise.all([
+            api.search('/api/notes'),
+            api.search('/api/folders'),
+            api.search('/api/tags')
+          ]);
+        })
+        .then(([notes, folders, tags]) => {
+          store.notes = notes;
+          store.folders = folders;
+          store.tags = tags;
+          render();
+        })
+        .catch(handleErrors);
+    });
+  }
+
   function bindEventListeners() {
     handleNoteItemClick();
     handleNoteSearchSubmit();
@@ -377,6 +409,7 @@ const noteful = (function () {
     handleTagClick();
     handleNewTagSubmit();
     handleTagDeleteClick();
+    handleLoginSubmit();
   }
 
   // This object contains the only exposed methods from this module:
