@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const passport = require('passport');
 
 const Note = require('../models/note');
+const Folder = require('../models/folder');
 
 const router = express.Router();
 
@@ -87,7 +88,8 @@ router.post('/', (req, res, next) => {
     return next(err);
   }
 
-  if (folderId && !mongoose.Types.ObjectId.isValid(folderId)) {
+  if (folderId && !mongoose.Types.ObjectId.isValid(folderId) || 
+      folderId && typeof Folder.find({userId}) === 'object') {
     const err = new Error('The `folderId` is not valid');
     err.status = 400;
     return next(err);
@@ -142,7 +144,8 @@ router.put('/:id', (req, res, next) => {
     return next(err);
   }
 
-  if (toUpdate.folderId && !mongoose.Types.ObjectId.isValid(toUpdate.folderId)) {
+  if (toUpdate.folderId && !mongoose.Types.ObjectId.isValid(toUpdate.folderId) || 
+      toUpdate.folderId && typeof Folder.find({userId}) === 'object') {
     const err = new Error('The `folderId` is not valid');
     err.status = 400;
     return next(err);
