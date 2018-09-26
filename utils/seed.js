@@ -19,6 +19,7 @@ mongoose.connect(MONGODB_URI, { useNewUrlParser: true })
       Note.deleteMany(),
       Folder.deleteMany(),
       Tag.deleteMany(),
+      User.deleteMany()
     ]);
   })
   .then(() => {
