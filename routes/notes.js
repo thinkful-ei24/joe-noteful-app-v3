@@ -6,6 +6,7 @@ const passport = require('passport');
 
 const Note = require('../models/note');
 const Folder = require('../models/folder');
+const Tag = require('../models/tag');
 
 const router = express.Router();
 
@@ -96,7 +97,8 @@ router.post('/', (req, res, next) => {
   }
 
   tags.forEach((tag) => {
-    if (!mongoose.Types.ObjectId.isValid(tag)) {
+    if (Array.isArray(tag) && !mongoose.Types.ObjectId.isValid(tag) ||
+        Array.isArray(tag) && typeof tag.filter((tag) => tag.userId !== req.user.id) === 'object') {
       const err = new Error('The `tags` array contains an invalid `id`');
       err.status = 400;
       return next(err);
@@ -151,10 +153,17 @@ router.put('/:id', (req, res, next) => {
     return next(err);
   }
 
-  if (toUpdate.tags) {
+  if (toUpdate.tags && Array.isArray(toUpdate.tags)) {
     const badIds = toUpdate.tags.filter((tag) => !mongoose.Types.ObjectId.isValid(tag));
+    const notOwned = toUpdate.tags.filter((tag) => tag.userId !== req.user.id);
     if (badIds.length) {
       const err = new Error('The `tags` array contains an invalid `id`');
+      err.status = 400;
+      return next(err);
+    }
+
+    if(notOwned.length) {
+      const err = new Error('A tag is not owned by current user');
       err.status = 400;
       return next(err);
     }
