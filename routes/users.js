@@ -7,7 +7,7 @@ const router = express.Router();
 
 //POST===============================================================
 router.post('/', (req, res, next) => {
-  const { fullName, username, password } = req.body;
+  let { fullName, username, password } = req.body;
   const requiredFields = ['username', 'password'];
   const missingField = requiredFields.find(field => !(field in req.body));
   
@@ -37,6 +37,11 @@ router.post('/', (req, res, next) => {
     const err = new Error('No whitespace allowed before or after username/password');
     err.status = 400;
     next(err);
+  }
+
+  if (fullName.indexOf(' ') === 0 || 
+      fullName.indexOf(' ') === fullName.length - 1) {
+    fullName = fullName.trim();
   }
 
   if (username.length <= 1 || password.length < 8 || password.length > 72) {

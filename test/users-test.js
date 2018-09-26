@@ -151,9 +151,29 @@ describe.only('Noteful API - Users', function () {
             expect(res).to.have.status(400);
           });
       });
-      
-      it('Should reject users with duplicate username');
-      it('Should trim fullName');
+
+      it('Should reject users with duplicate username', function() {
+        const testUser = {username, password, fullName};
+
+        return chai.request(app).post('/api/users').send(testUser)
+          .then(res => {
+            expect(res).to.have.status(201);
+            return chai.request(app).post('/api/users').send(testUser);
+          })
+          .then((res) => {
+            expect(res).to.have.status(400);
+          });
+      });
+
+      it('Should trim fullName', function() {
+        const testUser = {username, password, fullName: ' White Space '};
+
+        return chai.request(app).post('/api/users').send(testUser)
+          .then(res => {
+            expect(res).to.have.status(201);
+            expect(res.body.fullName).to.equal(testUser.fullName.trim());
+          });
+      });
     });
   });
 });
